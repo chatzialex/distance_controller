@@ -41,15 +41,24 @@ public:
   bool followTrajectory(const PoseArray &goals);
 
 private:
+  struct State {
+    double x;
+    double y;
+    double dx;
+    double dy;
+  };
+
   constexpr static char kCommandVelocityTopicName[]{"cmd_vel"};
   constexpr static char kNodeName[]{"distance_controller"};
-  constexpr static char kOdometryTopicName[]{"/odometry/filtered"};
+  // not using /odometry/filtered here because it introduces some delay
+  // and /rosbot_xl_base_controller/odom does not appear very noisy
+  constexpr static char kOdometryTopicName[]{"/rosbot_xl_base_controller/odom"};
 
   constexpr static double kPositionTolerance{0.1}; // [m]
   constexpr static auto kControlCycle{10ms};
-  constexpr static double kPGain{/* TODO */};
-  constexpr static double kIGain{/* TODO */};
-  constexpr static double kDGain{/* TODO */};
+  constexpr static double kPGain{1};
+  constexpr static double kIGain{0.5};
+  constexpr static double kDGain{0.5};
 
   void odomSubCb(const std::shared_ptr<const Odometry> msg);
   bool goToPoint(const Pose &goal);
@@ -57,13 +66,12 @@ private:
   rclcpp::Subscription<Odometry>::SharedPtr odom_sub_{};
   rclcpp::Publisher<Twist>::SharedPtr twist_pub_{};
 
-  std::optional<double> x_cur_{std::nullopt};
-  std::optional<double> y_cur_{std::nullopt};
+  std::optional<struct State> state_cur_{std::nullopt};
 };
 
 void DistanceController::odomSubCb(const std::shared_ptr<const Odometry> msg) {
-  x_cur_ = msg->pose.pose.position.x;
-  y_cur_ = msg->pose.pose.position.y;
+  state_cur_ = {msg->pose.pose.position.x, msg->pose.pose.position.y,
+                msg->twist.twist.linear.x, msg->twist.twist.linear.y};
 }
 
 bool DistanceController::goToPoint(const Pose &goal) {
@@ -73,16 +81,23 @@ bool DistanceController::goToPoint(const Pose &goal) {
   RCLCPP_INFO(this->get_logger(), "Received new goal: x=%f y=%f", x_goal,
               y_goal);
 
-  while (!x_cur_ || !y_cur_) {
+  const auto pid_step{[this](auto e, auto de, auto ie) {
+    return kPGain * e + kDGain * de + kIGain * ie;
+  }};
+
+  while (!state_cur_) {
     RCLCPP_WARN(this->get_logger(), "Odometry not received yet, waiting...");
     rclcpp::sleep_for(1s);
   }
 
-  double dx{}, dy{}, ds{};
+  double e_x{}, e_y{}, de_x{}, de_y{}, ie_x{0.0}, ie_y{0.0}, ds{};
+  Twist v_d{};
   while (true) {
-    dx = x_goal - x_cur_.value();
-    dy = y_goal - y_cur_.value();
-    ds = std::sqrt(dx * dx + dy * dy);
+    e_x = x_goal - state_cur_.value().x;
+    e_y = y_goal - state_cur_.value().y;
+    de_x = -state_cur_.value().dx; // dx_goal = 0
+    de_y = -state_cur_.value().dy; // dy_goal = 0
+    ds = std::sqrt(e_x * e_x + e_y * e_y);
 
     if (ds <= kPositionTolerance) {
       twist_pub_->publish(Twist{});
@@ -90,7 +105,11 @@ bool DistanceController::goToPoint(const Pose &goal) {
       return true;
     }
 
-    /* TODO: implement control cycle*/
+    v_d.linear.x = pid_step(e_x, de_x, ie_x);
+    v_d.linear.y = pid_step(e_y, de_y, ie_y);
+    ie_x += std::chrono::duration<double>{kControlCycle}.count() * e_x;
+    ie_y += std::chrono::duration<double>{kControlCycle}.count() * e_y;
+    twist_pub_->publish(v_d);
 
     rclcpp::sleep_for(kControlCycle);
   }
