@@ -54,11 +54,11 @@ private:
   // and /rosbot_xl_base_controller/odom does not appear very noisy
   constexpr static char kOdometryTopicName[]{"/rosbot_xl_base_controller/odom"};
 
-  constexpr static double kPositionTolerance{0.1}; // [m]
-  constexpr static auto kControlCycle{10ms};
-  constexpr static double kPGain{1};
-  constexpr static double kIGain{0.5};
-  constexpr static double kDGain{0.5};
+  constexpr static double kPositionTolerance{0.01}; // [m]
+  constexpr static auto kControlCycle{100ms};
+  constexpr static double kDGain{1};
+  constexpr static double kPGain{1.2};
+  constexpr static double kIGain{0.18};
 
   void odomSubCb(const std::shared_ptr<const Odometry> msg);
   bool goToPoint(const Pose &goal);
