@@ -50,15 +50,13 @@ private:
 
   constexpr static char kCommandVelocityTopicName[]{"cmd_vel"};
   constexpr static char kNodeName[]{"distance_controller"};
-  // not using /odometry/filtered here because it introduces some delay
-  // and /rosbot_xl_base_controller/odom does not appear very noisy
-  constexpr static char kOdometryTopicName[]{"/rosbot_xl_base_controller/odom"};
+  constexpr static char kOdometryTopicName[]{"/odometry/filtered"};
 
   constexpr static double kPositionTolerance{0.01}; // [m]
   constexpr static auto kControlCycle{100ms};
-  constexpr static double kDGain{1};
-  constexpr static double kPGain{1.2};
-  constexpr static double kIGain{0.18};
+  constexpr static double kDGain{0.7};
+  constexpr static double kPGain{1.7};
+  constexpr static double kIGain{0.05};
 
   void odomSubCb(const std::shared_ptr<const Odometry> msg);
   bool goToPoint(const Pose &goal);
